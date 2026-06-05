@@ -1250,6 +1250,13 @@
     <div id="healthVisibilityToggles"></div>
   </div>
 
+  <!-- Cloud Sync -->
+  <div class="settings-card">
+    <div class="settings-card-title">Cloud Sync <span id="syncSettingsStatus" style="font-size:12px;font-weight:400;color:var(--text-tertiary);margin-left:8px;"></span></div>
+    <div class="settings-card-desc">Sign in to sync your dashboard data across devices (desktop ↔ phone) in real time.</div>
+    <div id="syncSettingsBody" style="margin-top:6px;max-width:340px;"></div>
+  </div>
+
   <!-- Export / Import -->
   <div class="settings-card">
     <div class="settings-card-title">Data Export / Import</div>
@@ -3319,24 +3326,14 @@
     let statusEl, panelEl;
     function setStatus(text, isErr) {
       if (!statusEl) return;
-      statusEl.textContent = text;
+      statusEl.textContent = '· ' + text;
       statusEl.style.color = isErr ? 'var(--danger)' : 'var(--text-tertiary)';
     }
     function injectUI() {
-      const btn = document.createElement('button');
-      btn.textContent = '☁ Sync';
-      btn.style.cssText = 'position:fixed;left:16px;bottom:16px;z-index:9999;padding:8px 14px;border-radius:999px;border:1px solid rgba(255,255,255,0.12);background:rgba(20,20,24,0.85);color:var(--text-secondary);font:inherit;font-size:13px;cursor:pointer;backdrop-filter:blur(8px);';
-      btn.onclick = () => { panelEl.style.display = panelEl.style.display === 'none' ? 'block' : 'none'; renderAuth(); };
-      document.body.appendChild(btn);
-
-      panelEl = document.createElement('div');
-      panelEl.style.cssText = 'position:fixed;left:16px;bottom:60px;z-index:9999;width:280px;display:none;padding:16px;border-radius:14px;border:1px solid rgba(255,255,255,0.12);background:rgba(16,16,20,0.97);box-shadow:var(--card-shadow);backdrop-filter:blur(12px);';
-      document.body.appendChild(panelEl);
-
-      statusEl = document.createElement('div');
-      statusEl.style.cssText = 'position:fixed;left:84px;bottom:20px;z-index:9999;font-size:12px;color:var(--text-tertiary);pointer-events:none;';
-      statusEl.textContent = configured ? 'Not signed in' : 'Sync not configured';
-      document.body.appendChild(statusEl);
+      panelEl  = document.getElementById('syncSettingsBody');
+      statusEl = document.getElementById('syncSettingsStatus');
+      if (statusEl) statusEl.textContent = configured ? '· Not signed in' : '· Not configured';
+      renderAuth();
     }
     function renderAuth() {
       if (!panelEl) return;
@@ -3353,30 +3350,33 @@
         return;
       }
       panelEl.innerHTML =
-        '<div style="font-size:13px;color:var(--text-secondary);margin-bottom:10px">Sign in to sync your data to your phone.</div>' +
+        '<div style="font-size:13px;color:var(--text-secondary);margin-bottom:10px">Sign in to sync your data across devices.</div>' +
         '<input id="syncEmail" type="email" placeholder="you@email.com" style="width:100%;padding:8px;margin-bottom:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.12);background:rgba(0,0,0,0.3);color:var(--text-primary);font:inherit">' +
-        '<button id="syncSend" style="width:100%;padding:8px;border-radius:8px;border:none;background:var(--success);color:#06281a;cursor:pointer;font:inherit;font-weight:600">Email me a code</button>' +
-        '<div id="syncCodeWrap" style="display:none;margin-top:10px">' +
-          '<input id="syncCode" inputmode="numeric" placeholder="6-digit code" style="width:100%;padding:8px;margin-bottom:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.12);background:rgba(0,0,0,0.3);color:var(--text-primary);font:inherit">' +
-          '<button id="syncVerify" style="width:100%;padding:8px;border-radius:8px;border:none;background:var(--text-primary);color:#000;cursor:pointer;font:inherit;font-weight:600">Verify &amp; sync</button>' +
-        '</div>' +
+        '<input id="syncPass" type="password" placeholder="password (min 6 chars)" style="width:100%;padding:8px;margin-bottom:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.12);background:rgba(0,0,0,0.3);color:var(--text-primary);font:inherit">' +
+        '<button id="syncSignIn" style="width:100%;padding:8px;margin-bottom:6px;border-radius:8px;border:none;background:var(--success);color:#06281a;cursor:pointer;font:inherit;font-weight:600">Sign in</button>' +
+        '<button id="syncSignUp" style="width:100%;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.12);background:transparent;color:var(--text-secondary);cursor:pointer;font:inherit">Create account (first time)</button>' +
         '<div id="syncMsg" style="font-size:12px;margin-top:8px;color:var(--text-tertiary)"></div>';
       const msg = panelEl.querySelector('#syncMsg');
-      panelEl.querySelector('#syncSend').onclick = async () => {
-        const email = panelEl.querySelector('#syncEmail').value.trim();
-        if (!email) return;
-        msg.textContent = 'Sending…';
-        const { error } = await client.auth.signInWithOtp({ email, options: { shouldCreateUser: true } });
+      const creds = () => ({
+        email: panelEl.querySelector('#syncEmail').value.trim(),
+        password: panelEl.querySelector('#syncPass').value
+      });
+      panelEl.querySelector('#syncSignIn').onclick = async () => {
+        const { email, password } = creds();
+        if (!email || !password) { msg.textContent = 'Enter email and password.'; return; }
+        msg.textContent = 'Signing in…'; msg.style.color = 'var(--text-tertiary)';
+        const { error } = await client.auth.signInWithPassword({ email, password });
         if (error) { msg.textContent = error.message; msg.style.color = 'var(--danger)'; return; }
-        panelEl.querySelector('#syncCodeWrap').style.display = 'block';
-        msg.textContent = 'Check your email for a 6-digit code.'; msg.style.color = 'var(--text-tertiary)';
+        msg.textContent = 'Success — syncing…';
+        await afterSignIn();
       };
-      panelEl.querySelector('#syncVerify').onclick = async () => {
-        const email = panelEl.querySelector('#syncEmail').value.trim();
-        const token = panelEl.querySelector('#syncCode').value.trim();
-        msg.textContent = 'Verifying…'; msg.style.color = 'var(--text-tertiary)';
-        const { error } = await client.auth.verifyOtp({ email, token, type: 'email' });
+      panelEl.querySelector('#syncSignUp').onclick = async () => {
+        const { email, password } = creds();
+        if (!email || !password) { msg.textContent = 'Enter email and password.'; return; }
+        msg.textContent = 'Creating account…'; msg.style.color = 'var(--text-tertiary)';
+        const { data, error } = await client.auth.signUp({ email, password });
         if (error) { msg.textContent = error.message; msg.style.color = 'var(--danger)'; return; }
+        if (!data.session) { msg.textContent = 'Account made — now click Sign in.'; return; }
         msg.textContent = 'Success — syncing…';
         await afterSignIn();
       };
